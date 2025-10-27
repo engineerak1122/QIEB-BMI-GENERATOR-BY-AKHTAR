@@ -1,6 +1,839 @@
 <!doctype html>
 <html lang="en">
 <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>QIEB - BMI Card Generator</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" integrity="sha512-BNaRQnYJYiPSqHHDb58B0yaPfCu+Wgds8Gp/gU33kqBtgNS4tSPHuGibyoeqMV/TJlSKda6FXzoEyYGjTe+vXA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    
+<style>
+    :root {
+      --primary: #6ec6ff; /* Professional Blue */
+      --secondary: #f6a9c8; /* Soft Pink */
+      
+      --text-dark: #1b1b2f;
+      --text-body: #23334a;
+      --text-muted: #52607a;
+      --border-color: #e6eef8;
+      --bg-light: #f3f6fb;
+      --radius-lg: 18px;
+      --radius-md: 12px;
+      --radius-sm: 8px;
+      --shadow-sm: 0 4px 12px rgba(28, 34, 50, 0.04);
+      --shadow-md: 0 8px 20px rgba(28, 34, 50, 0.06);
+    }
+
+    /* --- Base/Reset (Mobile-First) --- */
+    * { box-sizing: border-box; }
+    body {
+      font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+      background: var(--bg-light);
+      margin: 0;
+      padding: 12px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      color: var(--text-body);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      /* Allow content to scroll vertically if needed */
+      overflow-y: auto; 
+    }
+    
+    .app-loading .app-container { display: none; }
+    .app-loading::after {
+      content: 'Loading BMI Generator...';
+      font-weight: 600;
+      font-size: 18px;
+      color: var(--text-muted);
+    }
+
+    h2 { margin: 4px 0 16px; color: var(--text-dark); }
+    .small { font-size: 13px; color: var(--text-muted); }
+    .small1 { font-size: 13px; color: white; background-color: #23334a; font-weight: bold; }
+
+    /* --- Layout --- */
+    .app-container {
+      width: 100%; /* Default to full width on mobile */
+      max-width: 1100px; /* Max width for desktop */
+      display: grid;
+      /* On mobile, stack controls and preview */
+      grid-template-columns: 1fr; 
+      gap: 24px;
+    }
+
+    .panel {
+      background: white;
+      border-radius: var(--radius-md);
+      padding: 20px;
+      box-shadow: var(--shadow-md);
+    }
+    
+    .panel-controls {
+        /* On small screens, controls take up the space */
+        width: 100%; 
+    }
+    
+    .panel-preview {
+      /* This element holds the card and must be the one we capture */
+      background-size: cover; 
+      background-position: center; 
+      background-repeat: no-repeat;
+      
+      width: 100%;
+      aspect-ratio: 1 / 1; /* Key to maintain the square shape */
+      max-width: 680px; /* Max size for the card preview */
+      margin: 0 auto;
+      
+      display: flex;
+      flex-direction: column;
+      border-radius: var(--radius-md); 
+      box-shadow: var(--shadow-md); 
+      padding: 12px; /* Mobile-first padding */
+      
+      /* Ensure it's the first item on small screens */
+      order: -1; 
+    }
+
+    /* Controls Panel */
+    .camera-wrap {
+      background: #fcfdfe;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    video {
+      width: 100%;
+      border-radius: var(--radius-sm);
+      background: #000;
+      margin-bottom: 12px;
+    }
+    canvas.preview { display: none; }
+    .controls-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      width: 100%;
+    }
+
+    /* Form Elements */
+    .form-group { margin-top: 16px; }
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-dark);
+      margin-bottom: 6px;
+    }
+    input[type=text], input[type=number], select, input[type=file] {
+      width: 100%;
+      padding: 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-color);
+      background: #fcfeff;
+      font-size: 16px;
+    }
+
+    /* Buttons */
+    .button-group { 
+        display: flex; 
+        gap: 8px; 
+        margin-top: 16px; 
+        /* Wrap buttons on very small screens (e.g., 320px) */
+        flex-wrap: wrap; 
+    }
+    button, .btn {
+      flex: 1 1 45%; /* Allow buttons to wrap */
+      appearance: none;
+      border: 0;
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 15px;
+      text-align: center;
+    }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-secondary { background: var(--secondary); color: white; }
+    .btn-ghost { background: transparent; border: 1px solid var(--border-color); color: var(--text-muted); }
+    
+    /* Force 100% width on very small screens to prevent squishing */
+    @media (max-width: 360px) {
+        button, .btn {
+            flex: 1 1 100%; /* Stack buttons vertically */
+            margin-bottom: 8px;
+        }
+    }
+
+
+    /* --- Card Structure (Mobile-First Sizes) --- */
+    /* This section uses relative sizes so the card scales down gracefully */
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgb(2, 9, 82); 
+      padding: 8px; /* Slightly reduced padding for very small screens */
+      border-radius: var(--radius-sm);
+      margin-bottom: 10px;
+      backdrop-filter: blur(1px);
+    }
+    .logo-slot {
+      width: 50px; /* Reduced logo size for smaller viewports */
+      height: 50px;
+      min-width: 50px; 
+      border-radius: 50%;
+      background: linear-gradient(180deg, #ffffff 0%, #fff0fb 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px dashed rgba(0, 0, 0, 0.04);
+      font-weight: 700;
+      color: var(--text-muted);
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+      font-size: 10px; /* Smaller font for placeholder */
+    }
+    .logo-slot img { width: 100%; height: 100%; object-fit: contain; }
+    .school-text { flex: 1; }
+    .school-name {
+      font-size: 14px; /* Reduced font size for small screen */
+      font-weight: 800;
+      color: WHITE;
+      letter-spacing: 0.5px;
+      line-height: 1.2;
+    }
+    .school-sub {
+      font-size: 10px; /* Reduced font size for small screen */
+      color: white;
+      margin-top: 4px;
+    }
+
+    .card-body {
+      display: flex; 
+      gap: 10px; /* Reduced gap for small screen */
+      flex: 1; 
+      overflow: hidden;
+    }
+
+    .card-photo {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      width: 35%; 
+      min-width: 0; 
+    }
+    
+    .photo-wrap {
+      width: 100%; 
+      aspect-ratio: 1/1; 
+      height: auto; 
+      border-radius: var(--radius-md); 
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      border: 3px solid rgba(255, 255, 255, 0.75); /* Reduced border for small screen */
+      box-shadow: var(--shadow-md);
+      
+      background-size: cover;
+      background-position: center;
+    }
+    #photoPlaceholder {
+      text-align: center;
+      color: rgba(255, 255, 255, 0.95);
+      font-weight: 800;
+      font-size: 16px; /* Reduced font size for small screen */
+    }
+    
+    .card-info {
+      flex: 1; 
+      display: flex;
+      flex-direction: column;
+      background: rgba(255,255,255,0.7); 
+      padding: 10px; /* Reduced padding for small screen */
+      border-radius: var(--radius-md);
+      backdrop-filter: blur(1px);
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: 50px 1fr;
+      gap: 4px; /* Reduced gap for small screen */
+    }
+    .info-grid .label { 
+      font-weight: 700; 
+      color: var(--text-dark); 
+      font-size: 12px; /* Reduced font size for small screen */
+    }
+    .info-grid .value { 
+      font-weight: 600; 
+      color: var(--text-body); 
+      font-size: 12px; /* Reduced font size for small screen */
+    }
+
+    .card-result {
+      width: 100%;
+      margin-top: 10px; 
+      padding: 8px; /* Reduced padding for small screen */
+      border-radius: var(--radius-md);
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: inset 0 -4px 12px rgba(0, 0, 0, 0.03);
+    }
+    .bmi-large {
+      font-size: 24px; /* Reduced font size for small screen */
+      font-weight: 900;
+      color: var(--primary);
+      line-height: 1;
+    }
+    .bmi-status {
+      font-size: 12px; /* Reduced font size for small screen */
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+    
+    .card-advice {
+      margin-top: 8px; 
+      padding: 8px; 
+      border-radius: var(--radius-sm);
+      background: #f7faff;
+      border-left: 4px solid var(--primary);
+      font-size: 11px; /* Reduced font size for small screen */
+    }
+    .card-advice strong { color: var(--text-dark); }
+    
+    .bmic-bar {
+      text-align: center;
+      background-color: #ff9500;
+      color: rgb(10, 3, 71);
+      padding: 6px; /* Reduced padding for small screen */
+      border-radius: 6px;
+      margin-top: 10px;
+      font-size: 10px; /* Reduced font size for small screen */
+      font-weight: bold;
+    }
+
+    .card-footer {
+      font-size: 9px; /* Reduced font size for small screen */
+      color: WHITE;
+      margin-top: 10px;
+      text-align: center;
+      background: rgb(3, 20, 77); 
+      padding: 8px;
+      border-radius: var(--radius-sm);
+      backdrop-filter: blur(1px);
+    }
+
+    /* --- Responsive (Desktop/Tablet) --- */
+    /* This media query defines the desktop layout and larger card sizes */
+    @media (min-width: 980px) {
+        /* Desktop Layout: Two columns */
+      .app-container { 
+        grid-template-columns: 380px 1fr; 
+      }
+      .panel-preview { 
+        order: 0; /* Card returns to second column */
+      }
+    }
+
+    /* Desktop Card Internal Sizes (Larger than 600px) */
+    @media (min-width: 600px) {
+      body { padding: 24px; }
+      .panel-preview {
+        padding: 20px;
+      }
+      .card-header {
+        gap: 16px;
+        padding: 10px 15px;
+        margin-bottom: 15px;
+      }
+      .logo-slot {
+        width: 80px;
+        height: 80px;
+        min-width: 80px;
+        font-size: 12px;
+      }
+      .school-name { font-size: 20px; }
+      .school-sub { font-size: 13px; margin-top: 6px; }
+      
+      .card-body { gap: 24px; }
+      
+      .card-photo { gap: 12px; }
+      .photo-wrap { border-width: 6px; border-radius: var(--radius-lg); }
+      #photoPlaceholder { font-size: 24px; }
+      
+      .card-info { padding: 20px; }
+      .info-grid { grid-template-columns: 70px 1fr; gap: 10px; }
+      .info-grid .label { font-size: 14px; } /* Kept labels smaller */
+      .info-grid .value { font-size: 16px; } /* Slightly larger values */
+      
+      .card-result { margin-top: 16px; padding: 16px; }
+      .bmi-large { font-size: 40px; }
+      .bmi-status { font-size: 16px; }
+      
+      .card-advice {
+        margin-top: 12px;
+        padding: 12px;
+        font-size: 13px;
+      }
+      
+      .bmic-bar {
+        padding: 10px;
+        font-size: 11px;
+      }
+      
+      .card-footer {
+        font-size: 10px;
+        margin-top: 16px;
+        padding: 10px 15px;
+      }
+    }
+      
+  </style>
+</head>
+<body class="app-loading">
+
+  <div class="app-container">
+
+    <div class="panel panel-controls">
+      <h2>Student Details & Capture</h2>
+      <div class="camera-wrap">
+        <video id="video" autoplay playsinline></video>
+        <canvas id="camCanvas" class="preview"></canvas>
+        <div class="controls-grid">
+          <button id="btnStart" class="btn btn-ghost">Start Camera</button>
+          <button id="btnFlip" class="btn btn-ghost">Flip</button>
+          <button id="btnCapture" class="btn btn-secondary">Capture</button>
+          <button id="btnClear" class="btn btn-ghost">Clear</button>
+        </div>
+        <div class="small" style="margin-top:8px;">Capture a square photo for best results.</div>
+      </div>
+
+      <div class="form-group">
+        <label for="name">Student Name</label>
+        <input id="name" type="text" placeholder="e.g. Ali Khan" />
+      </div>
+
+      <div class="form-group">
+        <label for="class">Class</label>
+        <input id="class" type="text" value="" placeholder="e.g. Nursery" />
+      </div>
+
+      <div class="form-group">
+        <label for="age">Age (years)</label>
+        <input id="age" type="number" min="3" max="20" value="10" />
+      </div>
+      
+      <div class="form-group">
+        <label for="height">Height (cm)</label>
+        <input id="height" type="number" min="30" max="250" value="150" />
+      </div>
+
+      <div class="form-group">
+        <label for="weight">Weight (kg)</label>
+        <input id="weight" type="number" min="2" max="300" value="50" />
+      </div>
+
+      <div class="button-group">
+        <button id="calcBtn" class="btn btn-primary">Calculate BMI</button>
+        <button id="downloadBtn" class="btn btn-ghost">Download Card (PNG)</button>
+      </div>
+
+      <div class="form-group">
+        <label for="logoInput">Upload Custom Logo (or Drag/Drop)</label>
+        <input id="logoInput" type="file" accept="image/*" />
+        <div class="small" style="margin-top:4px">Embedding the logo is required for consistent exports.</div>
+      </div>
+    </div>
+
+    <div class="panel panel-preview" id="cardArea">
+      
+      <header class="card-header">
+        <div class="logo-slot" id="logoSlot">QIEB</div>
+        <div class="school-text">
+          <div class="school-name">QUANTUM INSTITUTE OF EDUCATION BATTAGRAM</div>
+          <div class="school-sub">Contact: <strong>03038929177</strong> • Address: <strong>Main KKH Battagram</strong></div>
+        </div>
+      </header>
+
+      <main class="card-body">
+        <div class="card-photo">
+          <div class="photo-wrap" id="photoWrap">
+            <div id="photoPlaceholder">PHOTO</div>
+          </div>
+          
+        </div>
+
+        <div class="card-info">
+          <div class="info-grid">
+            <span class="label">Name:&nbsp;</span> <span class="value" id="showName">&nbsp;--</span>
+            <span class="label">Class:&nbsp;</span> <span class="value" id="showClass" >&nbsp;</span>
+            <span class="label">Age:&nbsp;</span> <span class="value"id="showAge">&nbsp;--</span> 
+            <span class="label">Height:&nbsp;</span> <span class="value" id="showHeight">&nbsp;-- cm</span>
+            <span class="label">Weight:&nbsp;</span> <span class="value" id="showWeight">&nbsp;-- kg</span>
+            
+          </div>
+
+          <div class="card-result">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start">
+              <div>
+                <div class="bmi-large" id="bmiValue">--</div>
+                <div class="bmi-status" id="bmiStatus">BMI</div>
+              </div>
+              <div style="text-align:right; font-size:12px; color:var(--text-muted); padding-top:4px;">
+                <div>BMI Week • QIEB</div>
+                <div>AUTO CALCULATION</div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="card-advice" id="adviceArea">
+            <strong>Advice:</strong> Enter data and click 'Calculate'.
+          </div>
+        </div>
+      </main>
+      
+      <div class="bmic-bar">
+        BMI WEEK | CALCULATED BY: QIEB - BMI CALCULATOR |
+        <span id="todayDate"></span>
+      </div>
+
+      <footer class="card-footer">
+        <strong>THIS BMI CARD IS FOR GENERAL SCREENING PURPOSES.</strong>
+      </footer>
+      
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // --- 1. Element References ---
+    const elements = {
+      video: document.getElementById('video'),
+      camCanvas: document.getElementById('camCanvas'),
+      btnStart: document.getElementById('btnStart'),
+      btnCapture: document.getElementById('btnCapture'),
+      btnFlip: document.getElementById('btnFlip'),
+      btnClear: document.getElementById('btnClear'),
+      nameInput: document.getElementById('name'),
+      classInput: document.getElementById('class'),
+      ageInput: document.getElementById('age'),
+      heightInput: document.getElementById('height'),
+      weightInput: document.getElementById('weight'),
+      calcBtn: document.getElementById('calcBtn'),
+      downloadBtn: document.getElementById('downloadBtn'),
+      showName: document.getElementById('showName'),
+      showClass: document.getElementById('showClass'),
+      showAge: document.getElementById('showAge'),
+      showHeight: document.getElementById('showHeight'),
+      showWeight: document.getElementById('showWeight'),
+      bmiValue: document.getElementById('bmiValue'),
+      bmiStatus: document.getElementById('bmiStatus'),
+      adviceArea: document.getElementById('adviceArea'),
+      photoWrap: document.getElementById('photoWrap'),
+      photoPlaceholder: document.getElementById('photoPlaceholder'),
+      logoSlot: document.getElementById('logoSlot'),
+      logoInput: document.getElementById('logoInput'),
+      cardArea: document.getElementById('cardArea'),
+      body: document.body
+    };
+
+    let stream = null;
+    let usingFront = true;
+    let capturedDataUrl = null; 
+    let logoImage = null; 
+
+    // --- 2. Base64 Logo Placeholder ---
+    // ▼▼▼ PASTE YOUR BASE64 LOGO STRING HERE ▼▼▼
+    const base64Logo = ''; // Leave blank if you will upload or paste a Base64 string here.
+
+    if (base64Logo) {
+      loadLogoFromDataURL(base64Logo);
+    }
+    // --- End Base64 Logo Placeholder ---
+
+
+    // --- 3. Core Functions ---
+    
+    function calculateBMI(weightKg, heightCm, ageYears) {
+      if (!weightKg || !heightCm) {
+        return { bmi: null, status: 'Missing Data', advice: 'Please enter height and weight.' };
+      }
+      
+      const heightM = heightCm / 100;
+      const bmi = weightKg / (heightM * heightM);
+      const roundedBMI = bmi.toFixed(1);
+      
+      let status = 'Not Calculated';
+      let advice = 'No specific advice yet.';
+
+      // Using standard adult BMI categories for general guidance, 
+      // but note that Pediatric BMI (BMI-for-age) is more complex.
+      if (ageYears < 18) {
+        // Simple approximation for this tool; in reality, use CDC growth charts
+        if (bmi < 15) {
+          status = 'Severely Underweight';
+          advice = 'Consult a doctor. Focus on a nutrient-rich, higher-calorie diet.';
+        } else if (bmi >= 15 && bmi < 18.5) {
+          status = 'Underweight';
+          advice = 'Encourage healthy eating habits and regular, moderate activity.';
+        } else if (bmi >= 18.5 && bmi < 25) {
+          status = 'Healthy Weight';
+          advice = 'Maintain a balanced diet and regular physical activity.';
+        } else if (bmi >= 25 && bmi < 30) {
+          status = 'Overweight';
+          advice = 'Encourage increased physical activity and limit sugary snacks.';
+        } else if (bmi >= 30) {
+          status = 'Obese';
+          advice = 'Consult a doctor. Focus on balanced meals and active play time.';
+        }
+      } else { 
+        // Adult BMI categories for 18+
+        if (bmi < 18.5) {
+          status = 'Underweight (Adult)';
+          advice = 'Focus on increasing muscle mass with protein and healthy fats.';
+        } else if (bmi >= 18.5 && bmi < 25) {
+          status = 'Healthy Weight (Adult)';
+          advice = 'Maintain current healthy lifestyle habits.';
+        } else if (bmi >= 25 && bmi < 30) {
+          status = 'Overweight (Adult)';
+          advice = 'Incorporate more cardio and reduce processed food intake.';
+        } else if (bmi >= 30) {
+          status = 'Obese (Adult)';
+          advice = 'Consult a doctor for a comprehensive health plan.';
+        }
+      }
+
+      return { bmi: roundedBMI, status, advice };
+    }
+
+    function updateCard() {
+      const name = elements.nameInput.value || '--';
+      const studentClass = elements.classInput.value || '';
+      const age = elements.ageInput.value || '--';
+      const height = elements.heightInput.value;
+      const weight = elements.weightInput.value;
+
+      elements.showName.textContent = name;
+      elements.showClass.textContent = studentClass;
+      elements.showAge.textContent = `${age} yrs`;
+      elements.showHeight.textContent = height ? `${height} cm` : '-- cm';
+      elements.showWeight.textContent = weight ? `${weight} kg` : '-- kg';
+      
+      // Calculate and update BMI
+      const result = calculateBMI(parseFloat(weight), parseFloat(height), parseInt(age));
+      
+      elements.bmiValue.textContent = result.bmi || '--';
+      elements.bmiStatus.textContent = result.status;
+      elements.adviceArea.innerHTML = `<strong>Advice:</strong> ${result.advice}`;
+    }
+
+    async function startCamera(frontFacing = true) {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      
+      try {
+        const constraints = {
+          video: {
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            facingMode: frontFacing ? 'user' : 'environment'
+          }
+        };
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        elements.video.srcObject = stream;
+        elements.video.style.display = 'block';
+        elements.camCanvas.style.display = 'none';
+        elements.btnStart.textContent = 'Stop Camera';
+        elements.btnFlip.disabled = false;
+        elements.btnCapture.disabled = false;
+        elements.btnClear.disabled = true;
+      } catch (err) {
+        console.error('Error accessing camera:', err);
+        alert('Could not start camera. Please check permissions or upload a photo instead.');
+        elements.btnStart.textContent = 'Start Camera';
+        elements.btnFlip.disabled = true;
+        elements.btnCapture.disabled = true;
+      }
+    }
+
+    function stopCamera() {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+      }
+      elements.video.style.display = 'none';
+      elements.btnStart.textContent = 'Start Camera';
+      elements.btnFlip.disabled = true;
+      elements.btnCapture.disabled = true;
+    }
+    
+    function capturePhoto() {
+      const video = elements.video;
+      const canvas = elements.camCanvas;
+      const context = canvas.getContext('2d');
+      
+      // Set canvas size to match the video's aspect ratio, or a fixed square for better card fit
+      const size = Math.min(video.videoWidth, video.videoHeight);
+      canvas.width = size;
+      canvas.height = size;
+      
+      // Calculate the cropping area to center the square
+      const x = (video.videoWidth - size) / 2;
+      const y = (video.videoHeight - size) / 2;
+      
+      // Draw the central square portion of the video feed onto the canvas
+      context.drawImage(video, x, y, size, size, 0, 0, size, size);
+      
+      // Save the captured image as a DataURL
+      capturedDataUrl = canvas.toDataURL('image/png');
+      
+      // Display the captured image on the card
+      elements.photoWrap.style.backgroundImage = `url('${capturedDataUrl}')`;
+      elements.photoWrap.style.backgroundSize = 'cover';
+      elements.photoPlaceholder.style.display = 'none';
+      
+      // Update camera controls
+      stopCamera();
+      elements.camCanvas.style.display = 'block'; // Show the capture preview (optional)
+      elements.btnClear.disabled = false;
+    }
+
+    function clearPhoto() {
+      capturedDataUrl = null;
+      elements.photoWrap.style.backgroundImage = 'none';
+      elements.photoPlaceholder.style.display = 'block';
+      elements.btnClear.disabled = true;
+      elements.camCanvas.style.display = 'none';
+    }
+    
+    function loadLogoFromDataURL(dataURL) {
+        const img = document.createElement('img');
+        img.src = dataURL;
+        img.onload = () => {
+            logoImage = img;
+            // Clear placeholder text and insert image
+            elements.logoSlot.textContent = '';
+            elements.logoSlot.innerHTML = ''; 
+            elements.logoSlot.appendChild(img);
+        };
+        img.onerror = () => {
+            console.error("Failed to load Base64 logo.");
+            elements.logoSlot.innerHTML = 'QIEB'; // Revert to text placeholder
+        };
+    }
+    
+    // --- 4. Event Listeners ---
+    
+    // Input fields update the card on change
+    Object.values(elements).filter(el => el && el.tagName === 'INPUT' && el.type !== 'file').forEach(input => {
+      input.addEventListener('input', updateCard);
+    });
+    
+    elements.calcBtn.addEventListener('click', updateCard);
+
+    // Camera controls
+    elements.btnStart.addEventListener('click', () => {
+      if (stream) {
+        stopCamera();
+      } else {
+        startCamera(usingFront);
+      }
+    });
+
+    elements.btnFlip.addEventListener('click', () => {
+      usingFront = !usingFront;
+      startCamera(usingFront);
+    });
+
+    elements.btnCapture.addEventListener('click', capturePhoto);
+    elements.btnClear.addEventListener('click', clearPhoto);
+    
+    // Logo Upload functionality
+    elements.logoInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                // Load the image from the uploaded file
+                loadLogoFromDataURL(event.target.result);
+            };
+            reader.readAsDataURL(file); // Convert file to Base64
+        }
+    });
+
+    // --- Download Card (html2canvas) ---
+    elements.downloadBtn.addEventListener('click', () => {
+      elements.downloadBtn.disabled = true;
+      elements.downloadBtn.textContent = 'Generating...';
+
+      // 🛑 The Key for Consistent Download Quality on ALL SCREENS 🛑
+      // We set a high 'scale' factor (e.g., 3.0) to ensure the output image 
+      // is high resolution (e.g., 680px * 3 = 2040px wide) even if displayed small (e.g., 320px).
+      // Get the currently displayed width of the cardArea for the scale calculation
+      const cardWidth = elements.cardArea.offsetWidth;
+      // Target a high resolution (e.g., 2040px), divide by the current width to get the scale
+      const TARGET_RESOLUTION = 2040; 
+      const scale = TARGET_RESOLUTION / cardWidth;
+
+      html2canvas(elements.cardArea, {
+          scale: scale, // Use the calculated scale for high resolution
+          useCORS: true,
+          logging: false // Disable logging for cleaner console
+      }).then(canvas => {
+          const name = elements.nameInput.value || 'BMI_Card';
+          const link = document.createElement('a');
+          link.download = `${name.replace(/\s/g, '_')}_BMI_Card.png`;
+          link.href = canvas.toDataURL('image/png');
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+
+          elements.downloadBtn.disabled = false;
+          elements.downloadBtn.textContent = 'Download Card (PNG)';
+      }).catch(error => {
+          console.error('Error generating card:', error);
+          alert('Failed to generate card. Ensure all fields are filled and a logo is fully loaded if used.');
+          elements.downloadBtn.disabled = false;
+          elements.downloadBtn.textContent = 'Download Card (PNG)';
+      });
+    });
+
+    // --- 5. Initialization ---
+    function init() {
+      // Set today's date
+      const options = { day: 'numeric', month: 'short', year: 'numeric' };
+      document.getElementById('todayDate').textContent = new Date().toLocaleDateString('en-US', options).toUpperCase();
+      
+      // Initial card update
+      updateCard();
+
+      elements.body.classList.remove('app-loading');
+      
+      // Default camera state
+      elements.btnFlip.disabled = true;
+      elements.btnCapture.disabled = true;
+      elements.btnClear.disabled = true;
+
+      // Initial photo state
+      clearPhoto(); 
+    }
+
+    init();
+});
+</script>
+
+    </div>
+  </div>
+</body>
+</html><!doctype html>
+<html lang="en">
+<head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>QIEB - BMI Card Generator</title>
@@ -736,3 +1569,4 @@
   </script>
 </body>
 </html>
+
